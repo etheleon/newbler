@@ -13,7 +13,8 @@ class Newbler:
     docker image: etheleon/python3
     '''
 
-    def __init__ (self, root, ko, cpu):
+    def __init__(self, root, ko, cpu, assm = "/home/uesu/Downloads/newbler/opt/454/apps/mapper/bin/runAssembly"):
+        self.assm = assm
         self.root = root #the directory which contains the KOs
         self.ko = ko
         self.cpu = cpu
@@ -49,33 +50,37 @@ class Newbler:
             print("I/O error({0}): {1}: {2}".format(e.errno, e.strerror, filePath))
             return False
 
-    def geneCentricAssembly(self, debug=False):
+    def __check(self, fq, num):
+        fqExists = os.path.isfile(fq)
+        if fqExists:
+            num_lines = sum(1 for line in open(fq))
+            return fqExists and num_lines > 0
+        else:
+            print("fastQ read%s does not exists for %s"%(num, self.ko))
+            return False
+
+
+    def geneCentricAssembly(self, debug=False, MDR=True):
         '''
         Running assembler: NEWBLER first time to generate gene centric assemblies
         '''
-        inputFile = "%s/%s/input/%s" % (self.root, self.ko, self.ko)
 
-        def check(fq, num):
-            fqExists = os.path.isfile(fq)
-            if fqExists:
-                num_lines = sum(1 for line in open(fq))
-                return fqExists and num_lines > 0
-            else:
-                print("fastQ read%s does not exists for %s"%(num, self.ko))
-                return False
+        if MDR:
+            inputFile = "%s/%s/%s" % (self.root, self.ko, self.ko)
+        else:
+            inputFile = "%s/%s/input/%s" % (self.root, self.ko, self.ko)
 
         for i in ("1","2"):
             self.info['fq'+i] = {
                 'filePath' : "%s.%s.fq"%(inputFile, i)
             }
-            self.info['fq'+i]['status'] = check(self.info['fq'+i]['filePath'], i)
+            self.info['fq'+i]['status'] = self.__check(self.info['fq'+i]['filePath'], i)
 
         haveBothReads = (self.info['fq1']['status'] and self.info['fq2']['status'])
         onlyHaveRead1 = (self.info['fq1']['status'] and  not self.info['fq2']['status'])
         onlyHaveRead2 = (not self.info['fq1']['status'] and self.info['fq2']['status'])
 
-        assm = "/home/uesu/Downloads/newbler/opt/454/apps/mapper/bin/runAssembly"
-        headCMD = assm + " -cpu " + self.cpu + " -force -m -urt -rip -o %s/%s" % (self.root, self.ko)
+        headCMD = self.assm + " -cpu " + self.cpu + " -force -m -urt -rip -o %s/%s" % (self.root, self.ko)
         if haveBothReads:
             cmd = headCMD + " %s.1.fq %s.2.fq" % (inputFile, inputFile)
         elif onlyHaveRead1:
@@ -85,6 +90,42 @@ class Newbler:
         else:
             print("Not processing: Both have no reads")
             cmd = ""
+        result = None
+        if debug:
+            print("Cmd: %s" % cmd)
+            print(self.info)
+        else:
+            print("Assembling %s..." % self.ko)
+            print("executing: %s" % cmd)
+            while result is None:
+                try:
+                    #doesnt really capture newbler's error messages
+                    subprocess.run(cmd, shell=True, check=True)
+                except subprocess.CalledProcessError as err:
+                    #error is empty
+                    print("newbler error:\n", err.output)
+                    self.__cleanup(self.ko, self.root)
+                else:
+                    if self.__checkNewblerIsDone():
+                        result = True
+                    else:
+                        pass
+            print("Done Assembling")
+
+    def mdrCentricAssembly(self, debug=False):
+        '''
+        Running assembler: NEWBLER second time to generate gene centric assemblies
+        '''
+
+        self.info['fq']['filePath'] = "%s/%s/%s" % (self.root, self.ko, self.ko)
+        self.info['fq']['status']   = self.__check(self.info['fq']['filePath'], 1)
+
+        if self.info['fq']['status']:
+            cmd = self.assm + " -cpu " + self.cpu + " -force -m -urt -rip -o %s/%s %s" % (self.root, self.ko, self.info['fq']['filePath'])
+        else:
+            print("Not processing: Both have no reads")
+            cmd = ""
+
         result = None
         if debug:
             print("Cmd: %s" % cmd)

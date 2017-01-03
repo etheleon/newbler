@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import os
 import errno
@@ -20,7 +21,7 @@ class Alignment:
         1. doPile
         2. getReadsFromPileup
         3. roundTwoAssembly
-    note: This is meant for further analysis after PADI
+    Meant for further analysis after PADI
 
     Input:
         * contig sequence
@@ -33,7 +34,6 @@ class Alignment:
     '''
 
     def __init__ (self, rootPath, ko):
-
         self.rootPath = rootPath
         self.ko = ko
         self.pileup = "%s/out/pileup/%s" % (rootPath, ko)
@@ -50,7 +50,7 @@ class Alignment:
         """
         try:
             os.makedirs(self.pileup)
-            print("pileup Already exists")
+            print("pileup folder: %sAlready exists")
         except OSError as e:
             if e.errno != errno.EEXIST:
                 raise  # raises the error again
@@ -61,20 +61,6 @@ class Alignment:
         #just want to test out how contig000001 looks like
         self.__readStatusPair()
         self.__parseFastQ()
-
-    def roundTwoAssembly(self):
-        assm = "/home/uesu/Downloads/newbler/opt/454/apps/mapper/bin/runAssembly"
-        print("Assembling %s" % self.ko)
-        result = None
-        while result is None:
-            try:
-                subprocess.run("%s -cpu %s -force -m -urt -rip -o %s/%s ./out/preNewbler/%s/%s" % (assm, 10, "./out/assemble", self.ko, self.ko, self.ko), shell=True, check=True)
-                result = True
-            except subprocess.CalledProcessError as err:
-                print("Ping stdout output:\n", err.output)
-                shutil.rmtree("./out/assemble/%s"%self.ko)
-                #might not be necessary
-        print("Done Assembling")
 
     def getReadsFromPileUP(self):
         self.__getMSALOC()
