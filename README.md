@@ -1,6 +1,6 @@
 # NEWBLER Manipulation for Gene Centric Analyses
 
-The scripts and classes are tested using python 3.5,
+The scripts and classes are tested using Anaconda installation of python 3.5,
 Requires NEWBLER2.9 installed on system.
 
 ## Project Folder structure
@@ -25,8 +25,7 @@ Requires NEWBLER2.9 installed on system.
     ├── pAss03
     ├── pAss05
     ├── pAss10
-    ├── pAss11
-
+    └── pAss11
 ```
 
 ## Docker 
@@ -49,5 +48,5 @@ Classes
 1. Alignment
     Alignment._doPile_ -         Generates a short read pileup for each of the contigs to be used later for assembly.
 
-
+pileup 
 

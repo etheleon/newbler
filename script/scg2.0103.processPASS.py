@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 
 import  os
-import errno
-import multiprocessing as mp
+import  errno
+import  multiprocessing as mp
+
 from newbler.pileup import Alignment
 
-ROOT = "./"
+ROOT      = "./"
 DIRECTORY = "./out/newbler"
-KOS = os.listdir(DIRECTORY)
+KOS       = os.listdir(DIRECTORY)
+
 #KOS = ['K00927']
+
 def extract_MDR_Reads(root, koid):
     """
     calls object to generate output

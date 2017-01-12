@@ -5,6 +5,8 @@ import os
 import errno
 import re
 import shutil
+import subprocess
+
 
 from collections   import defaultdict
 import subprocess
@@ -36,25 +38,25 @@ class Alignment:
     def __init__ (self, rootPath, ko):
         self.rootPath = rootPath
         self.ko = ko
-        self.pileup = "%s/out/pileup/%s" % (rootPath, ko)
-        self.start       = 0
-        self.end         = 0
+        self.start       = None
+        self.end         = None
         self.contigList  = {}
         self.readInfo    = {}
         self.outputRecords = []
+        print("Processing %s:" % ko)
 
     def doPile(self):
         """
         Generates a full pileup for each of the contigs.
         To be used later for assembly
         """
+        pileup = "%s/out/pileup/%s" % (self.rootPath, self.ko)
         try:
-            os.makedirs(self.pileup)
-            print("pileup folder: %sAlready exists")
+            os.makedirs(pileup)
         except OSError as e:
             if e.errno != errno.EEXIST:
                 raise  # raises the error again
-        print("Initializing: %s" % self.ko)
+        print("Initializing pileup for %s" % self.ko)
         self.__getMSALOC()
         self.__readContigs()
         self.__readMSA()
@@ -69,14 +71,21 @@ class Alignment:
 
     def __cutMSA(self):
         #msa alignment can be Rev and ntRev
+        try:
+            outputDir = "%s/out/preNewbler/%s" % (self.rootPath, self.ko)
+            os.makedirs(outputDir)
+        except OSError as e:
+            if e.errno != errno.EEXIST: #keep quiet if folder already exists
+                raise  # raises the error again
         print("extracting reads")
-        contigListFile = "out/pAss03/%s.msa" % self.ko
+        contigListFile = "%s/out/pAss03/%s.msa" % (self.rootPath, self.ko)
+        print(contigListFile)
         seqIter = SeqIO.parse(contigListFile, 'fasta')
         for contig in seqIter:
             mdr = self.__getSeq(contig, self.start,self.end)
             contigInMDR = len(mdr) > 0
             if (contigInMDR):
-                pileupFH = SeqIO.parse("out/pileup/%s/%s-%s" % (self.ko, self.ko, contig.id), 'fasta')
+                pileupFH = SeqIO.parse("%s/out/pileup/%s/%s-%s" % (self.rootPath, self.ko, self.ko, contig.id), 'fasta')
                 fullContig = next(pileupFH)
                 try:
                     indexVal = str(fullContig.seq).index(mdr)
@@ -91,7 +100,7 @@ class Alignment:
                     except ValueError as err:
                         print("%s-%s has issues:"%(self.ko, contig.id))
                         print(err)
-                SeqIO.write(self.outputRecords, "out/preNewbler/%s/%s" % (self.ko, self.ko), "fasta")
+                SeqIO.write(self.outputRecords, "%s/out/preNewbler/%s/%s" % (self.rootPath, self.ko, self.ko), "fasta")
             else:
                 print("%s is empty" % contig.id)
 
@@ -127,12 +136,13 @@ class Alignment:
         """
         grab the MDR location from MDR file originating from pass
         """
-        file        =  self.rootPath + '/out/pAss11/' + self.ko + ".fna"
-        record      =  next(SeqIO.parse(file, "fasta"))
-        theMatch    =  re.search("msaStart:(\d+) msaEND:(\d+)", record.description)
-        self.start  =  int(theMatch.group(1))
-        self.end    =  int(theMatch.group(2))
-        print("MDR start:%s end:%s" % (self.start, self.end))
+        if (self.start == None and self.end == None):
+            file        =  self.rootPath + '/out/pAss11/' + self.ko + ".fna"
+            record      =  next(SeqIO.parse(file, "fasta"))
+            theMatch    =  re.search("msaStart:(\d+) msaEND:(\d+)", record.description)
+            self.start  =  int(theMatch.group(1))
+            self.end    =  int(theMatch.group(2))
+            print("MDR start:%s end:%s" % (self.start, self.end))
 
     def __readContigs(self):
         """
@@ -174,8 +184,6 @@ class Alignment:
 
 
     def __readStatusPair(self):
-
-
         """
         Newbler interprets was given the command to intepret the reads as paired end reads.
         We got newbler to process them as a pair instead as single reads.
@@ -242,11 +250,49 @@ class Alignment:
                 print("%s the parent:%s ; read1: %s; direction %s") % (readID, row['Left Contig'], row['Left Pos'], row['Left Dir'])
         df.apply(splitNstore, axis=1)
 
+    def __guidedAlignment(self):
+        cmd = "bwa mem"
+        # incomplete: what i wanted to do is to have the mapping process passed onto bwa + 454ReadStatus, ie. get the read
+        # which belong to
 
     def __parseFastQ(self):
         """
-        Parses the fastqfiles and stores the reads into the correct contigs
+        Parses fastqfiles, stores then outputs the reads as fq pileups on the respective contigs.
+        not really working. will begin work on new private method
         """
+        def fixAlignment(rootPath, ko, contigID, debug=False):
+            """
+            temp fix for parseFastQ
+            readStatus mapping only gives location for contig not read,
+            ie.
+               123456789
+             --ATCGGGCAT  <contig> mapping position 1-4 (3 nts)
+             CGATCG-----  <read>   maping  position 3-6 (3 nts)
+             123456
+            """
+            #Part1: run muscle
+            #"tests/out/pileup/K00927/K00927-contig000001"
+            pileup = "%s/out/pileup/%s" % (rootPath, ko)
+            inputFile = '%s/%s-%s' % (pileup, ko, contigID)
+            cmd = "muscle -in %s -out %s.msa" % (inputFile, inputFile)
+            print("Running muscle:\n%s"%cmd)
+            if not debug:
+                try:
+                    subprocess.run(cmd, shell=True, check=True)
+                except subprocess.CalledProcessError as err:
+                    print("Error:\n", err.output)
+            #Part2: Store MSA sequences
+            msaed = {}
+            seqIter = SeqIO.parse("%s.msa"%inputFile, 'fasta')
+            for aligned in seqIter:
+                #print(aligned.description)
+                try:
+                    readID = re.search("^(\S+)-\S+$", aligned.description).group(1)
+                    msaed[readID] = str(aligned.seq)
+                except AttributeError as err:
+                    msaed[aligned.description] = str(aligned.seq)
+            return msaed
+
         testing = False
         fq1 = self.rootPath + "/out/newbler/" + self.ko + "/input/" + self.ko + ".1.fq"
         fq2 = self.rootPath + "/out/newbler/" + self.ko + "/input/" + self.ko + ".2.fq"
@@ -268,6 +314,7 @@ class Alignment:
                         front = "-" * int(startPos-1)
                         seq = str(record.seq)
                     readSEQ = front+seq+back
+                    readID = readID + "/1"
                     if theParent in poshash:
                         if testing:
                             if theParent == 'contig00001':
@@ -292,6 +339,7 @@ class Alignment:
                         front = "-" * (int(startPos-1))
                     back = "-" * int(len(self.contigList[theParent]['fullseq']) - startPos - len(record.seq))
                     readSEQ = front+seq+back
+                    readID = readID + "/2"
                     if theParent in poshash:
                         if testing:
                             if theParent == 'contig00001':
@@ -301,14 +349,29 @@ class Alignment:
                     else:
                         poshash[theParent] = defaultdict(list)
         #open one file for each contig
+        #readAlignment
+        pileup = "%s/out/pileup/%s" % (self.rootPath, self.ko)
         for contigID in self.contigList:
-            with open('%s/%s-%s' % (self.pileup, self.ko, contigID), 'w') as f:
+            with open('%s/%s-%s' % (pileup, self.ko, contigID), 'w') as f:
                     #print original contig and full sequence
                     f.write(">%s\n" % contigID)
                     f.write(str(self.contigList[contigID]['fullseq']+"\n"))
+                    #print the reads in order
                     if contigID in poshash:
                         for key, info in sorted(poshash[contigID].items()):
                             f.write(">%s-%s\n%s\n" % (info[0][0], contigID, info[0][1]))
+        #fixAlignment
+        for contigID in self.contigList:
+            msa = fixAlignment(self.rootPath, self.ko, contigID)
+            newOutputFile = '%s/%s-%s.reAligned.msa' % (pileup, self.ko, contigID)
+            with open(newOutputFile, 'w') as newOut:
+                    #print original contig and full sequence
+                    newOut.write(">%s\n" % contigID)
+                    newOut.write(str(msa[contigID]) + "\n")
+                    #print the reads in order
+                    if contigID in poshash:
+                        for key, info in sorted(poshash[contigID].items()):
+                            newOut.write(">%s-%s\n%s\n" % (info[0][0], contigID, msa[info[0][0]]))
 
     def __readStatus(self):
         """

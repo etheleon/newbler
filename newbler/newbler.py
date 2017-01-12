@@ -60,11 +60,11 @@ class Newbler:
             return False
 
 
-    def geneCentricAssembly(self, debug=False, MDR=True):
+    def geneCentricAssembly(self, debug=False, MDR=True, timeoutlimit=7200):
         '''
         Running assembler: NEWBLER first time to generate gene centric assemblies
         '''
-
+        #times out after 2 hours
         if MDR:
             inputFile = "%s/%s/%s" % (self.root, self.ko, self.ko)
         else:
@@ -91,6 +91,7 @@ class Newbler:
             print("Not processing: Both have no reads")
             cmd = ""
         result = None
+        count = 0
         if debug:
             print("Cmd: %s" % cmd)
             print(self.info)
@@ -98,12 +99,19 @@ class Newbler:
             print("Assembling %s..." % self.ko)
             print("executing: %s" % cmd)
             while result is None:
+                count = count + 1
+                if (count > 6):
+                    print("Exceeded 5 tries, not going to try again")
+                    result = True
                 try:
                     #doesnt really capture newbler's error messages
-                    subprocess.run(cmd, shell=True, check=True)
+                    subprocess.run(cmd, shell=True, check=True, timeout=timeoutlimit) #timeout 3600 seconds ie. 1 hour. so wait for max 2 hours before we timeout
                 except subprocess.CalledProcessError as err:
                     #error is empty
                     print("newbler error:\n", err.output)
+                    self.__cleanup(self.ko, self.root)
+                except subprocess.TimeoutExpired as err:
+                    print("Assembly of %s took more than 2 hours. Aborting" % ko)
                     self.__cleanup(self.ko, self.root)
                 else:
                     if self.__checkNewblerIsDone():
