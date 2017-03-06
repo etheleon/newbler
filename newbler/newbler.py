@@ -14,7 +14,7 @@ class Newbler:
     '''
 
     def __init__(self, root, ko, cpu, assm = "/home/uesu/Downloads/newbler/opt/454/apps/mapper/bin/runAssembly"):
-        self.assm = assm
+        self.assm = assm #this  default points to the newbler installation in the docker image
         self.root = root #the directory which contains the KOs
         self.ko = ko
         self.cpu = cpu
@@ -148,6 +148,38 @@ class Newbler:
                 except subprocess.CalledProcessError as err:
                     #error is empty
                     print("newbler error:\n", err.output)
+                    self.__cleanup(self.ko, self.root)
+                else:
+                    if self.__checkNewblerIsDone():
+                        result = True
+                    else:
+                        pass
+            print("Done Assembling")
+
+    def genericAssembly(self, inputFile, debug=False):
+        headCMD = self.assm + " -cpu " + self.cpu + " -force -m -urt -rip -o %s/%s %s" % (self.root, self.ko, inputFile)
+        result = None
+        count = 0
+        if debug:
+            print("Cmd: %s" % cmd)
+            print(self.info)
+        else:
+            print("Assembling %s..." % self.ko)
+            print("executing: %s" % cmd)
+            while result is None:
+                count = count + 1
+                if (count > 6):
+                    print("Exceeded 5 tries, not going to try again")
+                    result = True
+                try:
+                    #doesnt really capture newbler's error messages
+                    subprocess.run(cmd, shell=True, check=True, timeout=timeoutlimit) #timeout 3600 seconds ie. 1 hour. so wait for max 2 hours before we timeout
+                except subprocess.CalledProcessError as err:
+                    #error is empty
+                    print("newbler error:\n", err.output)
+                    self.__cleanup(self.ko, self.root)
+                except subprocess.TimeoutExpired as err:
+                    print("Assembly of %s took more than 2 hours. Aborting" % ko)
                     self.__cleanup(self.ko, self.root)
                 else:
                     if self.__checkNewblerIsDone():
