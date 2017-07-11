@@ -28,12 +28,21 @@ Requires NEWBLER2.9 installed on system.
     └── pAss11
 ```
 
-## Docker 
+## Docker
+
+```
+docker pull etheleon/python3
+```
+
+Run interactively
 
 ```
 cd $projectFolder
+
 docker run --rm -u 507 -v $PWD:/w -w /w -it etheleon/python3:0.1 /bin/bash
 ```
+
+
 
 ## Description
 
